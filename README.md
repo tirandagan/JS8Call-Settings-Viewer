@@ -6,7 +6,7 @@ A full-screen terminal user interface (TUI) application that reads and displays 
 
 ## Video Demo
 
-[![JS8Call Configuration Viewer Demo](images/2025-05-22_17-38-35.png)](https://www.youtube.com/watch?v=WXjq2xoOxk4 "JS8Call Configuration Viewer Demo")
+[![JS8Call Configuration Viewer Demo](./images/2025-05-22_17-38-35.png)](https://www.youtube.com/watch?v=WXjq2xoOxk4 "JS8Call Configuration Viewer Demo")
 
 *Click the image above to watch the demo video*
 
