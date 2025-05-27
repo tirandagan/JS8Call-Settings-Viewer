@@ -5,13 +5,14 @@ import sys
 import argparse
 import configparser
 import platform
+import re
 from pathlib import Path
 from typing import Dict, List, Tuple, Any, Optional
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, ScrollableContainer
-from textual.screen import Screen
+from textual.screen import Screen, ModalScreen
 from textual.widgets import Header, Footer, Static, Button, DataTable, Label, ListView, ListItem
 from textual.reactive import reactive
 from textual import events
@@ -214,6 +215,75 @@ SECTION_TO_CATEGORY = {
     "Display": "Display Settings"
 }
 
+# Dictionary to store valid values and formats for settings
+SETTING_VALUES = {}
+
+def load_setting_values():
+    """Parse the JS8Call settings values markdown file to extract valid values and formats."""
+    # Find the markdown file relative to this script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    md_path = os.path.join(script_dir, "docs", "js8call_settings_values.md")
+    
+    if not os.path.exists(md_path):
+        # Try with parent directory
+        md_path = os.path.join(script_dir, "..", "docs", "js8call_settings_values.md")
+        if not os.path.exists(md_path):
+            # If file is still not found, we can't load values
+            console = Console()
+            console.print("[bold yellow]Warning: js8call_settings_values.md not found, valid values information will not be available[/bold yellow]")
+            return
+    
+    # Parse the markdown file to extract settings and their valid values
+    current_category = None
+    in_table = False
+    
+    with open(md_path, "r") as f:
+        lines = f.readlines()
+        
+    for line in lines:
+        line = line.strip()
+        
+        # Check for category headers
+        if line.startswith("## "):
+            current_category = line[3:].strip()
+            in_table = False
+        # Check for table header separator
+        elif "|---" in line:
+            in_table = True
+            continue
+        # Process table rows
+        elif in_table and line.startswith("|") and line.endswith("|"):
+            # Split by pipe character and strip spaces
+            parts = [part.strip() for part in line.split("|")[1:-1]]
+            
+            if len(parts) >= 3:  # Ensure we have setting, values, and description
+                # Extract setting name and remove formatting
+                setting = parts[0].replace("**", "").strip()
+                values = parts[1].strip()
+                description = parts[2].strip()
+                
+                # Store in our dictionary
+                SETTING_VALUES[setting] = {
+                    "category": current_category,
+                    "values": values,
+                    "description": description
+                }
+
+def get_setting_values(key):
+    """Get the valid values/format for a setting."""
+    # Try to find an exact match first
+    if key in SETTING_VALUES:
+        return SETTING_VALUES[key]
+    
+    # Try case-insensitive match
+    key_lower = key.lower()
+    for setting_key, values in SETTING_VALUES.items():
+        if setting_key.lower() == key_lower:
+            return values
+    
+    # Return None if no match found
+    return None
+
 def is_documented_setting(key):
     """Check if a setting is documented in js8call_ini_file_structure.md."""
     # Check for exact match
@@ -397,6 +467,49 @@ def organize_settings_by_category(config):
     # Remove empty categories
     return {k: v for k, v in categorized_settings.items() if v}
 
+class SettingValuesScreen(ModalScreen):
+    """Modal screen to display valid values and format for a setting."""
+    
+    BINDINGS = [
+        # Any key will dismiss this screen
+        Binding("escape", "dismiss", "Back"),
+        Binding("q", "dismiss", "Back"),
+    ]
+    
+    def __init__(self, setting_key, setting_value, setting_values):
+        super().__init__()
+        self.setting_key = setting_key
+        self.setting_value = setting_value
+        self.setting_values = setting_values
+        
+    def compose(self) -> ComposeResult:
+        """Create child widgets for the values screen."""
+        # Create a simple modal dialog with the setting information
+        with Vertical(id="values-dialog"):
+            yield Static(f"Valid Values for: [bold]{self.setting_key}[/bold]", id="values-title")
+            
+            with ScrollableContainer(id="values-content"):
+                if self.setting_values:
+                    # Format the values information nicely
+                    values_text = f"[bold underline]Valid Values/Format:[/bold underline]\n{self.setting_values['values']}\n\n"
+                    values_text += f"[bold underline]Description:[/bold underline]\n{self.setting_values['description']}\n\n"
+                    values_text += f"[bold underline]Current Value:[/bold underline]\n{self.setting_value}"
+                    
+                    yield Static(values_text)
+                else:
+                    yield Static("No valid values information available for this setting.")
+            
+            yield Static("Press any key to close", id="values-footer")
+    
+    def on_key(self, event: events.Key) -> None:
+        """Handle key press events - any key dismisses this screen."""
+        # Dismiss the screen
+        self.dismiss()
+        
+        # We still want to allow navigation keys to be processed after dismissal
+        # So we don't prevent default
+        event.prevent_default = False
+
 class SettingTable(DataTable):
     """A data table for displaying configuration settings."""
     def __init__(self, *args, **kwargs):
@@ -544,6 +657,7 @@ class SettingsView(Screen):
         Binding("k", "prev_setting", "Previous"),
         Binding("tab", "toggle_focus", "Toggle Focus"),
         Binding("f1", "help", "Help"),
+        Binding("v", "show_values", "Values"),
     ]
     
     def __init__(self, config, config_path, show_all=False):
@@ -744,6 +858,30 @@ class SettingsView(Screen):
         else:
             self.query_one("#categories-list").focus()
 
+    def action_show_values(self) -> None:
+        """Show the valid values screen for the current setting."""
+        # Get the current setting from the table
+        table = self.query_one("#settings-table")
+        
+        # Make sure the table has focus and there are rows
+        if table.row_count > 0 and 0 <= table.cursor_row < table.row_count:
+            try:
+                # Get the current row at cursor position
+                row_key = list(table.rows.keys())[table.cursor_row]
+                row = table.get_row(row_key)
+                
+                if row:
+                    setting_key = str(row[0])
+                    setting_value = str(row[1])
+                    setting_values = get_setting_values(setting_key)
+                    
+                    # Show the values screen as a modal dialog
+                    values_screen = SettingValuesScreen(setting_key, setting_value, setting_values)
+                    self.app.push_screen(values_screen)
+            except (IndexError, KeyError):
+                # Handle any issues gracefully
+                pass
+
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Handle selection of a setting in the table."""
         if event.row_key is None:
@@ -785,6 +923,7 @@ Keyboard Shortcuts:
 [k]      - Move to previous setting
 [Enter]  - Select item
 [F1]     - Show/hide this help
+[v]      - Show valid values for current setting
 [q]      - Quit application
 
 About this application:
@@ -909,6 +1048,35 @@ class JS8CallConfigViewer(App):
         align: center middle;
     }
     
+    #values-dialog {
+        width: 70%;
+        height: 70%;
+        border: solid $primary;
+        background: $surface;
+    }
+    
+    #values-title {
+        background: $accent;
+        color: $text;
+        text-align: center;
+        text-style: bold;
+        padding: 1;
+    }
+    
+    #values-content {
+        padding: 1 2;
+        height: 1fr;
+        overflow-y: auto;
+    }
+    
+    #values-footer {
+        background: $surface-lighten-1;
+        color: $text;
+        text-align: center;
+        padding: 1;
+        border-top: solid $primary;
+    }
+    
     Header {
         height: 1;
         padding: 0;
@@ -932,6 +1100,9 @@ class JS8CallConfigViewer(App):
     
     def on_mount(self) -> None:
         """Set up the application after it has been mounted."""
+        # Load valid values for settings
+        load_setting_values()
+        
         # Read the config file
         result = read_js8call_ini(self.config_path)
         if result:

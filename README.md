@@ -16,6 +16,7 @@ A full-screen terminal user interface (TUI) application that reads and displays 
 - Organized categories sidebar matching the JS8Call documentation structure
 - Detailed information display for each setting with comprehensive descriptions
 - Three-line description area showing the purpose and impact of each setting
+- **NEW:** Valid values popup showing allowed formats and values for each setting
 - Cross-platform support (Windows, macOS, Linux)
 - Automatic detection of JS8Call.ini file in standard locations
 - Shows only documented settings by default (use `--all` to see everything)
@@ -102,6 +103,7 @@ js8call-config-viewer
 - **l**: Focus on settings (right panel)
 - **j**: Move to next setting (down)
 - **k**: Move to previous setting (up)
+- **v**: Show valid values and format for the selected setting
 - **Arrow keys**: Navigate through lists and tables
 - **Enter**: Select item
 - **F1**: Show help screen with detailed information
@@ -116,6 +118,7 @@ The application features a clean, organized layout:
 3. **Description Area**: Three-line area below the main content showing detailed information about the selected setting
 4. **Status Bar**: Shows the configuration file path and author information
 5. **Footer**: Displays available keyboard shortcuts
+6. **Valid Values Popup**: Press 'v' to see detailed format information and allowed values for the selected setting
 
 Each setting is displayed in the table with:
 1. **Setting Name**: The configuration parameter name
